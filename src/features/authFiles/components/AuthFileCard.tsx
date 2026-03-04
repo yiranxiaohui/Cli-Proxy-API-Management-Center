@@ -38,6 +38,8 @@ export type AuthFileCardProps = {
   disableControls: boolean;
   deleting: string | null;
   statusUpdating: Record<string, boolean>;
+  testUpdating: Record<string, boolean>;
+  autoDisabled: boolean;
   quotaFilterType: QuotaProviderType | null;
   keyStats: KeyStats;
   statusBarCache: Map<string, AuthFileStatusBarData>;
@@ -65,6 +67,8 @@ export function AuthFileCard(props: AuthFileCardProps) {
     disableControls,
     deleting,
     statusUpdating,
+    testUpdating,
+    autoDisabled,
     quotaFilterType,
     keyStats,
     statusBarCache,
@@ -106,6 +110,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
   const rawStatusMessage = String(file['status_message'] ?? file.statusMessage ?? '').trim();
   const hasStatusWarning =
     Boolean(rawStatusMessage) && !HEALTHY_STATUS_MESSAGES.has(rawStatusMessage.toLowerCase());
+  const isTesting = testUpdating[file.name] === true;
 
   return (
     <div
@@ -149,6 +154,16 @@ export function AuthFileCard(props: AuthFileCardProps) {
               {t('auth_files.file_modified')}: {formatModified(file)}
             </span>
           </div>
+
+          {isTesting && (
+            <div className={styles.healthStatusMessage}>{t('auth_files.health_check_running')}</div>
+          )}
+
+          {autoDisabled && (
+            <div className={styles.healthStatusMessage}>
+              {t('auth_files.health_check_failed_auto_disabled')}
+            </div>
+          )}
 
           {rawStatusMessage && hasStatusWarning && (
             <div className={styles.healthStatusMessage} title={rawStatusMessage}>
@@ -241,7 +256,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
                 <ToggleSwitch
                   ariaLabel={t('auth_files.status_toggle_label')}
                   checked={!file.disabled}
-                  disabled={disableControls || statusUpdating[file.name] === true}
+                  disabled={disableControls || statusUpdating[file.name] === true || isTesting}
                   onChange={(value) => onToggleStatus(file, value)}
                 />
               </div>

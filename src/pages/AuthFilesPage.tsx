@@ -88,6 +88,8 @@ export function AuthFilesPage() {
     deleting,
     deletingAll,
     statusUpdating,
+    testUpdating,
+    autoDisabledNames,
     fileInputRef,
     loadFiles,
     handleUploadClick,
@@ -96,6 +98,7 @@ export function AuthFilesPage() {
     handleDeleteAll,
     handleDownload,
     handleStatusToggle,
+    runAutoHealthChecks,
     toggleSelect,
     selectAllVisible,
     deselectAll,
@@ -236,6 +239,14 @@ export function AuthFilesPage() {
       void refreshKeyStats().catch(() => {});
     },
     isCurrentLayer ? 240_000 : null
+  );
+
+  useInterval(
+    () => {
+      if (connectionStatus !== 'connected') return;
+      void runAutoHealthChecks().catch(() => {});
+    },
+    isCurrentLayer ? 300_000 : null
   );
 
   const existingTypes = useMemo(() => {
@@ -560,6 +571,8 @@ export function AuthFilesPage() {
                 disableControls={disableControls}
                 deleting={deleting}
                 statusUpdating={statusUpdating}
+                testUpdating={testUpdating}
+                autoDisabled={autoDisabledNames.has(file.name)}
                 quotaFilterType={quotaFilterType}
                 keyStats={keyStats}
                 statusBarCache={statusBarCache}

@@ -14,6 +14,21 @@ type DeleteAllOptions = {
   onResetFilterToAll: () => void;
 };
 
+const AUTO_HEALTH_CHECK_CONCURRENCY = 3;
+
+type HealthCheckError = {
+  status?: number;
+  message?: string;
+};
+
+const isHealthCheckUnsupported = (err: unknown): boolean => {
+  const status = typeof err === 'object' && err !== null && 'status' in err ? (err as HealthCheckError).status : undefined;
+  if (status === 404 || status === 405 || status === 501) return true;
+  const message = err instanceof Error ? err.message : String((err as HealthCheckError)?.message ?? '');
+  const normalized = message.toLowerCase();
+  return normalized.includes('not found') || normalized.includes('unsupported') || normalized.includes('404');
+};
+
 export type UseAuthFilesDataResult = {
   files: AuthFileItem[];
   selectedFiles: Set<string>;
@@ -24,6 +39,8 @@ export type UseAuthFilesDataResult = {
   deleting: string | null;
   deletingAll: boolean;
   statusUpdating: Record<string, boolean>;
+  testUpdating: Record<string, boolean>;
+  autoDisabledNames: Set<string>;
   fileInputRef: RefObject<HTMLInputElement | null>;
   loadFiles: () => Promise<void>;
   handleUploadClick: () => void;
@@ -32,6 +49,7 @@ export type UseAuthFilesDataResult = {
   handleDeleteAll: (options: DeleteAllOptions) => void;
   handleDownload: (name: string) => Promise<void>;
   handleStatusToggle: (item: AuthFileItem, enabled: boolean) => Promise<void>;
+  runAutoHealthChecks: () => Promise<void>;
   toggleSelect: (name: string) => void;
   selectAllVisible: (visibleFiles: AuthFileItem[]) => void;
   deselectAll: () => void;
@@ -55,10 +73,14 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState<Record<string, boolean>>({});
+  const [testUpdating, setTestUpdating] = useState<Record<string, boolean>>({});
+  const [autoDisabledNames, setAutoDisabledNames] = useState<Set<string>>(new Set());
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const selectionCount = selectedFiles.size;
+  const testInFlightRef = useRef<Set<string>>(new Set());
+  const autoHealthCheckRunningRef = useRef(false);
 
   const toggleSelect = useCallback((name: string) => {
     setSelectedFiles((prev) => {
@@ -99,6 +121,17 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
       return changed ? next : prev;
     });
   }, [files, selectedFiles.size]);
+
+  const filesRef = useRef<AuthFileItem[]>(files);
+  const autoDisabledNamesRef = useRef<Set<string>>(autoDisabledNames);
+
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+
+  useEffect(() => {
+    autoDisabledNamesRef.current = autoDisabledNames;
+  }, [autoDisabledNames]);
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
@@ -341,6 +374,12 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
         setFiles((prev) =>
           prev.map((f) => (f.name === name ? { ...f, disabled: res.disabled } : f))
         );
+        setAutoDisabledNames((prev) => {
+          if (!prev.has(name)) return prev;
+          const next = new Set(prev);
+          next.delete(name);
+          return next;
+        });
         showNotification(
           enabled
             ? t('auth_files.status_enabled_success', { name })
@@ -364,6 +403,153 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     },
     [showNotification, t]
   );
+
+  const runSingleHealthCheck = useCallback(
+    async (item: AuthFileItem) => {
+      const name = item.name;
+      if (!name || testInFlightRef.current.has(name)) return;
+
+      testInFlightRef.current.add(name);
+      setTestUpdating((prev) => ({ ...prev, [name]: true }));
+
+      try {
+        await authFilesApi.getModelsForAuthFile(name);
+
+        const currentFile = filesRef.current.find((file) => file.name === name);
+        if (!currentFile) return;
+
+        const wasAutoDisabled = autoDisabledNamesRef.current.has(name);
+        if (wasAutoDisabled && currentFile.disabled) {
+          try {
+            const res = await authFilesApi.setStatus(name, false);
+            setFiles((prev) =>
+              prev.map((file) =>
+                file.name === name
+                  ? {
+                      ...file,
+                      disabled: res.disabled,
+                      status: 'success',
+                      statusMessage: t('auth_files.health_check_success_auto_enabled'),
+                      lastRefresh: Date.now()
+                    }
+                  : file
+              )
+            );
+            setAutoDisabledNames((prev) => {
+              if (!prev.has(name)) return prev;
+              const next = new Set(prev);
+              next.delete(name);
+              return next;
+            });
+            showNotification(t('auth_files.health_check_success_auto_enabled_name', { name }), 'success');
+          } catch (statusError: unknown) {
+            const message = statusError instanceof Error ? statusError.message : t('common.unknown_error');
+            setFiles((prev) =>
+              prev.map((file) =>
+                file.name === name
+                  ? {
+                      ...file,
+                      status: 'error',
+                      statusMessage: t('auth_files.health_check_enable_failed_detail', { message }),
+                      lastRefresh: Date.now()
+                    }
+                  : file
+              )
+            );
+          }
+        }
+      } catch (err: unknown) {
+        if (isHealthCheckUnsupported(err)) {
+          return;
+        }
+
+        const message = err instanceof Error ? err.message : t('common.unknown_error');
+        const currentFile = filesRef.current.find((file) => file.name === name);
+        if (!currentFile) return;
+
+        const shouldDisable = !currentFile.disabled;
+        if (shouldDisable) {
+          const res = await authFilesApi.setStatus(name, true);
+          setFiles((prev) =>
+            prev.map((file) =>
+              file.name === name
+                ? {
+                    ...file,
+                    disabled: res.disabled,
+                    status: 'error',
+                    statusMessage: t('auth_files.health_check_failed_auto_disabled_detail', { message }),
+                    lastRefresh: Date.now()
+                  }
+                : file
+            )
+          );
+          setAutoDisabledNames((prev) => {
+            if (prev.has(name)) return prev;
+            const next = new Set(prev);
+            next.add(name);
+            return next;
+          });
+          showNotification(t('auth_files.health_check_failed_auto_disabled_name', { name }), 'warning');
+          return;
+        }
+
+        if (autoDisabledNamesRef.current.has(name)) {
+          setFiles((prev) =>
+            prev.map((file) =>
+              file.name === name
+                ? {
+                    ...file,
+                    status: 'error',
+                    statusMessage: t('auth_files.health_check_failed_auto_disabled_detail', { message }),
+                    lastRefresh: Date.now()
+                  }
+                : file
+            )
+          );
+          return;
+        }
+
+        setFiles((prev) =>
+          prev.map((file) =>
+            file.name === name
+              ? {
+                  ...file,
+                  status: 'error',
+                  statusMessage: t('auth_files.health_check_skipped_manual_disabled_detail', { message }),
+                  lastRefresh: Date.now()
+                }
+              : file
+          )
+        );
+      } finally {
+        testInFlightRef.current.delete(name);
+        setTestUpdating((prev) => {
+          if (!prev[name]) return prev;
+          const next = { ...prev };
+          delete next[name];
+          return next;
+        });
+      }
+    },
+    [showNotification, t]
+  );
+
+  const runAutoHealthChecks = useCallback(async () => {
+    if (autoHealthCheckRunningRef.current) return;
+    autoHealthCheckRunningRef.current = true;
+
+    try {
+      const candidates = filesRef.current.filter((file) => !isRuntimeOnlyAuthFile(file));
+      if (candidates.length === 0) return;
+
+      for (let i = 0; i < candidates.length; i += AUTO_HEALTH_CHECK_CONCURRENCY) {
+        const chunk = candidates.slice(i, i + AUTO_HEALTH_CHECK_CONCURRENCY);
+        await Promise.all(chunk.map((file) => runSingleHealthCheck(file)));
+      }
+    } finally {
+      autoHealthCheckRunningRef.current = false;
+    }
+  }, [runSingleHealthCheck]);
 
   const batchSetStatus = useCallback(
     async (names: string[], enabled: boolean) => {
@@ -498,6 +684,8 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     deleting,
     deletingAll,
     statusUpdating,
+    testUpdating,
+    autoDisabledNames,
     fileInputRef,
     loadFiles,
     handleUploadClick,
@@ -506,6 +694,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     handleDeleteAll,
     handleDownload,
     handleStatusToggle,
+    runAutoHealthChecks,
     toggleSelect,
     selectAllVisible,
     deselectAll,
