@@ -98,6 +98,7 @@ export function AuthFilesPage() {
     handleDeleteAll,
     handleDownload,
     handleStatusToggle,
+    handleTestCredential,
     runAutoHealthChecks,
     toggleSelect,
     selectAllVisible,
@@ -582,6 +583,7 @@ export function AuthFilesPage() {
                 onOpenPrefixProxyEditor={openPrefixProxyEditor}
                 onDelete={handleDelete}
                 onToggleStatus={handleStatusToggle}
+                onTest={handleTestCredential}
                 onToggleSelect={toggleSelect}
               />
             ))}

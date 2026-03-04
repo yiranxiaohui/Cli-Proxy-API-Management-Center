@@ -516,6 +516,7 @@
     "models_excluded_badge": "Disabled",
     "models_excluded_hint": "This OAuth model is disabled",
     "status_toggle_label": "Enabled",
+    "test_button": "Test",
     "health_check_running": "Running automatic credential health check...",
     "health_check_failed_auto_disabled": "Last automatic test failed, temporarily disabled",
     "health_check_failed_auto_disabled_name": "Credential \"{{name}}\" failed automatic test and was temporarily disabled",

@@ -516,6 +516,7 @@
     "models_excluded_badge": "Отключена",
     "models_excluded_hint": "Эта OAuth-модель отключена",
     "status_toggle_label": "Включено",
+    "test_button": "Тест",
     "health_check_running": "Выполняется автоматическая проверка доступности...",
     "health_check_failed_auto_disabled": "Последняя автопроверка не прошла, временно отключено",
     "health_check_failed_auto_disabled_name": "Учётные данные \"{{name}}\" не прошли автопроверку и были временно отключены",

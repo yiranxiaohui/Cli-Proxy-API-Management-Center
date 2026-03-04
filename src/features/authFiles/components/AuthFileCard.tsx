@@ -8,6 +8,7 @@ import {
   IconCode,
   IconDownload,
   IconInfo,
+  IconRefreshCw,
   IconTrash2,
 } from '@/components/ui/icons';
 import { ProviderStatusBar } from '@/components/providers/ProviderStatusBar';
@@ -49,6 +50,7 @@ export type AuthFileCardProps = {
   onOpenPrefixProxyEditor: (file: AuthFileItem) => void;
   onDelete: (name: string) => void;
   onToggleStatus: (file: AuthFileItem, enabled: boolean) => void;
+  onTest: (file: AuthFileItem) => void;
   onToggleSelect: (name: string) => void;
 };
 
@@ -78,6 +80,7 @@ export function AuthFileCard(props: AuthFileCardProps) {
     onOpenPrefixProxyEditor,
     onDelete,
     onToggleStatus,
+    onTest,
     onToggleSelect,
   } = props;
 
@@ -234,6 +237,19 @@ export function AuthFileCard(props: AuthFileCardProps) {
                   disabled={disableControls}
                 >
                   <IconCode className={styles.actionIcon} size={16} />
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => onTest(file)}
+                  className={styles.iconButton}
+                  title={t('auth_files.test_button', { defaultValue: '测试' })}
+                  loading={isTesting}
+                  disabled={
+                    disableControls || deleting === file.name || statusUpdating[file.name] === true || isTesting
+                  }
+                >
+                  <IconRefreshCw size={16} />
                 </Button>
                 <Button
                   variant="danger"

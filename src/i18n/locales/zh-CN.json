@@ -516,6 +516,7 @@
     "models_excluded_badge": "已禁用",
     "models_excluded_hint": "此 OAuth 模型已被禁用",
     "status_toggle_label": "启用",
+    "test_button": "测试",
     "health_check_running": "正在自动测试凭证可用性...",
     "health_check_failed_auto_disabled": "最近一次自动测试失败，已临时禁用",
     "health_check_failed_auto_disabled_name": "凭证 \"{{name}}\" 自动测试失败，已临时禁用",

@@ -49,6 +49,7 @@ export type UseAuthFilesDataResult = {
   handleDeleteAll: (options: DeleteAllOptions) => void;
   handleDownload: (name: string) => Promise<void>;
   handleStatusToggle: (item: AuthFileItem, enabled: boolean) => Promise<void>;
+  handleTestCredential: (item: AuthFileItem) => Promise<void>;
   runAutoHealthChecks: () => Promise<void>;
   toggleSelect: (name: string) => void;
   selectAllVisible: (visibleFiles: AuthFileItem[]) => void;
@@ -534,6 +535,13 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     [showNotification, t]
   );
 
+  const handleTestCredential = useCallback(
+    async (item: AuthFileItem) => {
+      await runSingleHealthCheck(item);
+    },
+    [runSingleHealthCheck]
+  );
+
   const runAutoHealthChecks = useCallback(async () => {
     if (autoHealthCheckRunningRef.current) return;
     autoHealthCheckRunningRef.current = true;
@@ -694,6 +702,7 @@ export function useAuthFilesData(options: UseAuthFilesDataOptions): UseAuthFiles
     handleDeleteAll,
     handleDownload,
     handleStatusToggle,
+    handleTestCredential,
     runAutoHealthChecks,
     toggleSelect,
     selectAllVisible,
